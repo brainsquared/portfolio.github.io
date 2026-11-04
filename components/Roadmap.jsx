@@ -2,143 +2,167 @@
 
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "mle-roadmap-progress";
+const STORAGE_KEY = "mle-roadmap-v2";
+const OFFSETS = [0, 48, 76, 48, 0, -48, -76, -48];
 
-export default function Roadmap({ phases, pivots }) {
-  const [checked, setChecked] = useState({});
-  const [open, setOpen] = useState({ [phases.find((p) => p.current)?.id]: true });
+export default function Roadmap({ units, pivots }) {
+  const [done, setDone] = useState({});
+  const [ticks, setTicks] = useState({});
+  const [open, setOpen] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     try {
-      setChecked(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"));
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      setDone(s.done || {});
+      setTicks(s.ticks || {});
     } catch {}
+    setLoaded(true);
   }, []);
 
-  const toggle = (key) => {
-    setChecked((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+  useEffect(() => {
+    if (!loaded) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ done, ticks }));
+  }, [done, ticks, loaded]);
+
+  const lessons = units.flatMap((u) => u.lessons);
+  const currentId = lessons.find((l) => !done[l.id])?.id;
+  const pct = lessons.length
+    ? Math.round((lessons.filter((l) => done[l.id]).length / lessons.length) * 100)
+    : 0;
+
+  const toggleCriterion = (lessonId, i) =>
+    setTicks((t) => ({ ...t, [`${lessonId}-${i}`]: !t[`${lessonId}-${i}`] }));
+
+  const markDone = (lessonId) => {
+    setDone((d) => ({ ...d, [lessonId]: true }));
+    setOpen(null);
+    const idx = lessons.findIndex((l) => l.id === lessonId);
+    const next = lessons.slice(idx + 1).find((l) => !done[l.id]);
+    if (next) {
+      setTimeout(() => {
+        setOpen(next.id);
+        document
+          .getElementById(next.id)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 350);
+    }
   };
 
-  const totalItems = phases.reduce(
-    (n, p) =>
-      n + p.sections.reduce((m, s) => m + (s.type === "checklist" ? s.items.length : 0), 0),
-    0
-  );
-  const doneItems = Object.values(checked).filter(Boolean).length;
-  const pct = totalItems ? Math.round((doneItems / totalItems) * 100) : 0;
-
-  const phaseDone = (p) => {
-    const keys = p.sections.flatMap((s, si) =>
-      s.type === "checklist" ? s.items.map((_, i) => `${p.id}-${si}-${i}`) : []
-    );
-    return keys.length > 0 && keys.every((k) => checked[k]);
-  };
+  let lessonIdx = 0;
 
   return (
     <>
       <header>
         <p className="kicker">lifelong roadmap</p>
         <h1>Machine Learning Engineer</h1>
-        <p className="subtitle">From first line of code to financial optionality</p>
+        <p className="subtitle">
+          {lessons.length} lessons · Year 9 → financial optionality
+        </p>
         <div className="progress-card">
           <div className="progress-label">
-            <span>Overall progress</span>
+            <span>
+              {lessons.filter((l) => done[l.id]).length} / {lessons.length}{" "}
+              lessons done
+            </span>
             <span className="pct">{pct}%</span>
           </div>
           <div className="progress-track">
             <div className="progress-fill" style={{ width: `${pct}%` }} />
           </div>
         </div>
-        <nav className="phase-nav">
-          {phases.map((p) => (
-            <a
-              key={p.id}
-              href={`#${p.id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                setOpen((o) => ({ ...o, [p.id]: true }));
-                document.getElementById(p.id)?.scrollIntoView({ behavior: "smooth" });
-              }}
-            >
-              {p.number}. {p.title}
-            </a>
-          ))}
-        </nav>
       </header>
 
-      <main className="timeline">
-        {phases.map((p) => {
-          const done = phaseDone(p);
-          const isOpen = !!open[p.id];
-          return (
-            <section key={p.id} id={p.id} className={`phase ${done ? "done" : ""} ${p.current ? "current" : ""}`}>
-              <div className="node">
-                <div className="dot">{done ? "✓" : p.number}</div>
-                {p.current && <div className="here-badge">you are here</div>}
+      <main className="path">
+        {units.map((unit, ui) => (
+          <div key={unit.id} className="unit">
+            <div className="unit-banner">
+              <div>
+                <p className="unit-num">Unit {ui + 1}</p>
+                <h2>{unit.title}</h2>
               </div>
-              <div className="card">
-                <button
-                  className="card-header"
-                  onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))}
-                >
-                  <div className="card-titles">
-                    <h2>{p.title}</h2>
-                    <p className="meta">{p.meta}</p>
-                  </div>
-                  <span className={`chevron ${isOpen ? "up" : ""}`}>▾</span>
-                </button>
-                {isOpen && (
-                  <div className="card-body">
-                    <p className="intro">{p.intro}</p>
-                    {p.sections.map((s, si) => (
-                      <div key={si} className="section">
-                        <h3>{s.heading}</h3>
-                        {s.type === "checklist" ? (
-                          <ul className="checklist">
-                            {s.items.map((item, i) => {
-                              const key = `${p.id}-${si}-${i}`;
-                              return (
-                                <li key={key} className={checked[key] ? "checked" : ""}>
-                                  <label>
-                                    <input
-                                      type="checkbox"
-                                      checked={!!checked[key]}
-                                      onChange={() => toggle(key)}
-                                    />
-                                    <span>{item}</span>
-                                  </label>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        ) : (
-                          <ul className="notes">
-                            {s.items.map((item, i) => (
-                              <li key={i}>{item}</li>
-                            ))}
-                          </ul>
-                        )}
+              <span className="unit-meta">{unit.meta}</span>
+            </div>
+
+            <div className="lesson-path">
+              {unit.lessons.map((lesson) => {
+                const idx = lessonIdx++;
+                const off = OFFSETS[idx % OFFSETS.length];
+                const isDone = !!done[lesson.id];
+                const isCurrent = lesson.id === currentId;
+                const isOpen = open === lesson.id;
+                const checkedCount = lesson.criteria.filter(
+                  (_, i) => ticks[`${lesson.id}-${i}`]
+                ).length;
+
+                return (
+                  <div key={lesson.id} className="lesson-wrap" id={lesson.id}>
+                    <div className="lesson-row" style={{ transform: `translateX(${off}px)` }}>
+                      <button
+                        className={`lesson-node ${isDone ? "done" : ""} ${isCurrent ? "current" : ""} ${isOpen ? "open" : ""}`}
+                        onClick={() => setOpen(isOpen ? null : lesson.id)}
+                        aria-label={lesson.title}
+                      >
+                        <span className="node-icon">{isDone ? "✓" : lesson.icon}</span>
+                      </button>
+                      {isCurrent && <div className="start-tag">start</div>}
+                    </div>
+
+                    {isOpen && (
+                      <div className="lesson-panel">
+                        <div className="panel-head">
+                          <h3>{lesson.title}</h3>
+                          <span className="panel-meta">{lesson.meta}</span>
+                        </div>
+                        <p className="panel-intro">{lesson.intro}</p>
+                        <ul className="criteria">
+                          {lesson.criteria.map((c, i) => {
+                            const key = `${lesson.id}-${i}`;
+                            return (
+                              <li key={key} className={ticks[key] ? "tick" : ""}>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!ticks[key]}
+                                    onChange={() => toggleCriterion(lesson.id, i)}
+                                  />
+                                  <span>{c}</span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <div className="panel-foot">
+                          <span className="criteria-count">
+                            {checkedCount}/{lesson.criteria.length}
+                          </span>
+                          <button
+                            className={`done-btn ${isDone ? "is-done" : ""}`}
+                            onClick={() => markDone(lesson.id)}
+                            disabled={isDone}
+                          >
+                            {isDone ? "Completed" : "Done"}
+                          </button>
+                        </div>
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            </section>
-          );
-        })}
-        <div className="timeline-end">
-          <div className="dot flag">⚑</div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        <div className="flag-row">
+          <div className="flag-node">🏁</div>
         </div>
       </main>
 
       <footer>
         <h2>Pivot map</h2>
         <p className="footer-lead">
-          Phases 0–4 are career-agnostic. If MLE dies, shifts, or stops being
-          interesting, the same base converts to:
+          The early units are career-agnostic. If MLE dies, shifts, or stops
+          being interesting, the same base converts to:
         </p>
         <div className="pivots">
           {pivots.map((p) => (

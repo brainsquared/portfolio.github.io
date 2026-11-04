@@ -1,6 +1,6 @@
 import Roadmap from "../components/Roadmap";
-import { phases, pivots } from "../data/roadmap";
+import { units, pivots } from "../data/roadmap";
 
 export default function Home() {
-  return <Roadmap phases={phases} pivots={pivots} />;
+  return <Roadmap units={units} pivots={pivots} />;
 }
